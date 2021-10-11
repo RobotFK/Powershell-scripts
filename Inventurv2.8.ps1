@@ -1,4 +1,4 @@
-# by Fabian Keusen 
+# by Fabian Keusen under GNU General Public License
 #V1 Added Base Functions
 #V2 Added 2 Additional Sniffers and a Dynamic naming system
 #V2.2 Added timestamp to Prevent duplication, and Curren user
