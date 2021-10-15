@@ -1,6 +1,6 @@
 ﻿#By Fabian Keusen under  GPL-3.0 License 
 #V0.2 Added more Stuff, mostly Framwork
-
+#V0.3 Replaced Registry readout with wmi options
 class pc{#What we take from Each user
         [String]$Seriennummer
         [String]$PCName
@@ -28,20 +28,19 @@ $Singelconversion = -not( Test-Path HardwareInventory.csv) # If we are not Shari
 if($Singelconversion){
     $PClist = Read-Host "No HardwareInventory detected.`nEnter Target Workstation:"
 }else{
-
+    $PClist = Get-Content -Path .\HardwareInventory.csv -Filter PLD*|Select |%{if(($_ -notmatch "Computer") -and ($_ -like "*,*")){($_ -split ",")[0]}}
 }
-#Import goes towards $PClist
 
-
-ForEach($PC in $PClist){ #needs aproper Import here
-Write-Host "$PC is the current Workstation";
+ForEach($PCName in $PClist){ #needs aproper Import here
+if (Test-Connection -ComputerName $PCName -Count 1 -Quiet){ #Ensure the PC is online
 $PC = [pc]::new()
-$PC.Seriennummer = get-WmiObject Win32_BIOS | Select SerialNumber |%{$_.SerialNumber}
+$PC.PCName = $PCName
+$PC.Seriennummer = get-WmiObject Win32_BIOS -ComputerName $PC.PCName| Select SerialNumber |%{$_.SerialNumber}
 $PC.PCName = $env:computername
 $PC.Username = $env:UserName
 
 {
-$Monitorsarray = Get-WmiObject -Property SerialNumberID -Namespace "root/WMI" WmiMonitorID |Select-Object  SerialNumberID | %{[char[]]($_.SerialNumberID)};
+$Monitorsarray = Get-WmiObject -Property SerialNumberID -ComputerName $PC.PCName -Namespace "root/WMI" WmiMonitorID |Select-Object  SerialNumberID | %{[char[]]($_.SerialNumberID)};
 
 if([int]$Monitorsarray[1] -ne 0){#Removes internal and Empty Serials
 $Monitorsarray[0..15]| Foreach-Object{ $PC.Monitor1 += $_;}}
@@ -54,19 +53,22 @@ $Monitorsarray[32..47]| Foreach-Object{ $PC.Monitor3 += $_;}}
 } #Monitor Detection
 
 {
-Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\usbccgp\Enum -name [1-9]| get-member -name "?"|
-    %{$_.Definition}|%{# The Prefix "string 1=" is handed over with the Same information that 
-        if(($_.substring(17,4) -eq "03F0") -and ($_.substring(26,4) -ne "2B4A")){#HP but not the Keyboard
-        $PC.USB += "HP:" + $_.substring(31)
-        }elseif(($_.substring(17,4) -eq "046D") -and ($_.substring(26,4) -ne "C31C")){#Logitec but not the Keyboard
-        $PC.USB += "Logitec:" + $_.substring(31)
-        }elseif(($_.substring(17,4) -eq "1B17") -and ($_.substring(26,4) -ne "C31C")){#Plusonic that is stealing the SHENZHEN e-loam VendorID
-        $PC.USB += "Plusonic:" + $_.substring(31)
-        }}} #USB Detection
+Get-WmiObject -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{$_.DeviceID}|%{
+# The Prefix 
+        if(($_.substring(8,4) -eq "03F0") -and ($_.substring(17,4) -ne "2B4A")){#HP but not the Keyboard
+        $PC.USB += "HP:" + ($_ -split "\\")[2]
+        }elseif(($_.substring(8,4) -eq "046D") -and ($_.substring(17,4) -ne "C31C")){#Logitec but not the Keyboard
+        $PC.USB += "Logitec:" + ($_ -split "\\")[2]
+        }elseif(($_.substring(8,4) -eq "1B17") -and ($_.substring(17,4) -ne "C31C")){#Plusonic that is stealing the SHENZHEN e-loam VendorID
+        $PC.USB += "Plusonic:" + ($_ -split "\\")[2]
+        }} #USB Detection
+       
 
 [void]$Ergebnis.add($PC)
 
-}
+}}
+
+$Ergebnis | Export-Csv -Path -UseCulture -Encoding UTF8 -NoTypeInformation
 
 $PC | Export-Csv -Path C:\Daten\TestOutput.csv -UseCulture -NoTypeInformation
 
@@ -80,3 +82,16 @@ $temp = "Test" , "Killer" ,177013
 ForEach($current in $temp){
 Write-Host "Temp is $current"
 }
+
+Workflow Massping{
+    ForEach -Parallel ($PCName in $PClist){ #needs aproper Import here
+        if (Test-Connection -ComputerName $PCName -Count 1 -Quiet){"$PCName is online"}else{"Offline"}"Ran $PCName"}
+} Massping
+
+Invoke-Command -ComputerName PLD104DAU094Y -{
+Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\usbccgp\Enum -name [1-9]| get-member -name "?"|%{$_.Definition}}
+
+sc \\computer_name start remoteregistry
+$test = REG QUERY \\PLD104DAU094Y\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\usbccgp\Enum;$test
+
+gwmi -Class Win32_USBDevice | select DeviceID 
