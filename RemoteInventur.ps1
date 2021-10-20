@@ -34,23 +34,39 @@ if($Singelconversion){
     $PClist = Get-Content -Path .\HardwareInventory.csv -Filter PLD*|Select |%{if(($_ -notmatch "Computer") -and ($_ -like "*,*")){($_ -split ",")[0]}}
 }
 
+$Error.clear() 
 ForEach($PCName in $PClist){
 $count += 1;
 $progress = [math]::Round(($count/$PClist.count),4)
-Write-Progress -Activity "Total Progress" -Status "$progress% Complete:" -PercentComplete $progress
+$PClistcount = $PClist.count
+Write-Progress -Activity "Total Progress" -Status "$progress% Complete:" -PercentComplete $progress -id "$PClistcount Entries"
 
-if (Test-Connection -ComputerName $PCName -Count 1 -Quiet){ #Ensure the PC is online
+if (Test-Connection -ComputerName $PCName -Count 1 -Quiet -TimeoutSeconds 1){ #Ensure the PC is online
 $PC = [pc]::new()
 $PC.PCName = $PCName ;
-$PC.Seriennummer = get-WmiObject Win32_BIOS -ComputerName $PC.PCName| Select SerialNumber |%{$_.SerialNumber}
-$PC.Username = Get-WmiObject -Class win32_computersystem -ComputerName $PCName | select username |%{($_.username.split("\\"))[1]}
+$PC.Username = "Offline";
+$Ergebnis += ($PC);
+continue;
+}
 
-$PC #For testing
+#Catch If we cant acces Some stuff
+try{
+$null = Get-CimInstance -ClassName WMIMonitorID -ComputerName $PCName -Namespace root\wmi -ErrorAction:SilentlyContinue
+#$null = Get-CimInstance -Class Win32_USBDevice -ComputerName $PCName -ErrorAction:SilentlyContinue
+}
+Finally{
+    if($Error -ne $null){"Cim Acces Restrictions"
+    $Error.clear()}
+}
+
+$PC = [pc]::new()
+$PC.PCName = $PCName ;
+$PC.Seriennummer = get-CimInstance Win32_BIOS -ComputerName $PC.PCName| Select SerialNumber |%{$_.SerialNumber}
+$PC.Username = Get-CimInstance -Class win32_computersystem -ComputerName $PCName | select username |%{($_.username.split("\\"))[1]}
 
 #Monitor Detection:
 
-
-$Monitorsarray = Get-WmiObject -Property SerialNumberID -ComputerName $PC.PCName -Namespace "root/WMI" WmiMonitorID |Select-Object  SerialNumberID | %{[char[]]($_.SerialNumberID)};
+$Monitorsarray = Get-CimInstance -Property SerialNumberID -ComputerName $PC.PCName -Namespace "root/WMI" WmiMonitorID |Select-Object  SerialNumberID | %{[char[]]($_.SerialNumberID)};
 
 if([int]$Monitorsarray[1] -ne 0){#Removes internal and Empty Serials
 $Monitorsarray[0..15]| Foreach-Object{ $PC.Monitor1 += $_;}}
@@ -63,8 +79,7 @@ $Monitorsarray[32..47]| Foreach-Object{ $PC.Monitor3 += $_;}}
 
 
 #USB Detection
-Get-WmiObject -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{$_.DeviceID}|%{
-# The Prefix 
+Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{$_.DeviceID}|%{
         if(($_.substring(8,4) -eq "03F0") -and ($_.substring(17,4) -ne "2B4A") -and ($_.substring(17,4) -ne "154A")){#HP but not the Keyboard or Mouse
         $PC.USB += "HP:" + ($_ -split "\\")[2]
         }elseif(($_.substring(8,4) -eq "046D") -and ($_.substring(17,4) -ne "C31C")){#Logitec but not the Keyboard
@@ -77,7 +92,7 @@ Get-WmiObject -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{
 $Ergebnis += ($PC);
 
 
-}} #End of main loop
+} #End of main loop
 
 $Ergebnis | Export-Csv -Path C:\Daten\TestOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation
 
@@ -119,4 +134,44 @@ if((Get-WmiObject -ComputerName P103DIS2OG -Namespace root/CIMV2 __Namespace |Se
 
 P103DIS2OG
 
-}#>
+}
+
+WmiMonitorID
+Get-WmiObject -computername P103DIS2OG -Namespace root\wmi -list |%{if($_.name -like "Wmi*"){$_}}
+Get-WmiObject -Namespace root\wmi -list |%{$_.name}|%{if($_ -like "Wmi*"){$_}}
+
+$cred = get-credential
+Get-WmiObject  -credential $cred -Class WmiMonitorID -ComputerName P103DIS2OG -Namespace root\wmi|%{$_.properties}|%{if($_.name -like "Serial*"){$_.value}}
+
+#This needs to work without list
+Get-WmiObject -Class WmiMonitorID -ComputerName P103DIS2OG -List -Namespace root\wmi|%{$_.properties}|%{if($_.name -like "Serial*"){$_}}
+
+Get-WmiObject -computername P103DIS2OG -Namespace root\wmi -list
+
+Get-DCOMSecurity -ComputerName P103DIS2OG|%{if($_.name -ne ""){$_.name}}
+
+Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{$_.DeviceID}#>
+
+#Works
+Get-CimClass -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi
+
+#Does not work
+Get-CimInstance -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi 
+Get-WmiObject -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi 
+
+$Error.clear()
+try{Get-WmiObject -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi}
+Finally{
+    if($Error -ne $null){"Error Found"}
+}
+
+$Error.clear()
+
+try{$null = Get-CimInstance -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi -ErrorAction:SilentlyContinue}
+Finally{
+    if($Error -ne $null){"Cim Acces Restrictions"
+    $Error.clear()}
+}
+
+$PCName = "PLD104DAU094Y"
+Test-Connection -ComputerName $PCName -Count 1 -Quiet -Delay 0
