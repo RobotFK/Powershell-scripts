@@ -1,6 +1,12 @@
 ﻿#By Fabian Keusen under  GPL-3.0 License 
 #V0.2 Added more Stuff, mostly Framwork
 #V0.3 Replaced Registry readout with wmi options
+#V0.4 Replaced all Wmi with Cmi, added a system to detect cmi internal errors
+#v0.5 Fixed Exeption detection and added a system to stop Overriding of output
+#v1.0 Firs release.It might have bugs to fix and edge cases
+
+#Start-Transcript -Path "P:\Programming\transcript.txt"
+
 class pc{#What we take from Each user
         [String]$Seriennummer
         [String]$PCName
@@ -13,16 +19,6 @@ class pc{#What we take from Each user
 
 $Ergebnis = @();
 $count = 0;
-<#
-$verschiedenePCNamen = "PLD50WBA8..",""
-
-ForEach($PC in $verschiedenePCNamen){
-    $AktuellerPC = [pc]::new()
-    $AktuellerPC.seriennummer = ""
-    $AktuellerPC.PCN = ""
-    [void]$Ergebnis.add($AktuellerPC)
-}
-#>
 
 Write-Host "Warning: Execution requires local admin rights on queried devices" 
 
@@ -34,31 +30,50 @@ if($Singelconversion){
     $PClist = Get-Content -Path .\HardwareInventory.csv -Filter PLD*|Select |%{if(($_ -notmatch "Computer") -and ($_ -like "*,*")){($_ -split ",")[0]}}
 }
 
+[array] $PClist = $PClist | Where-Object { $_ -like "PLD104*" }
+
+$sw = [Diagnostics.Stopwatch]::StartNew()
 $Error.clear() 
 ForEach($PCName in $PClist){
+$Exeption = $False;#Reset just to make sure
 $count += 1;
 $progress = [math]::Round(($count/$PClist.count),4)
 $PClistcount = $PClist.count
-Write-Progress -Activity "Total Progress" -Status "$progress% Complete:" -PercentComplete $progress -id "$PClistcount Entries"
+Write-Progress -Activity "Progress of Checking $PClistcount Entries" -Status "$progress% Complete:" -PercentComplete $progress 
 
-if (Test-Connection -ComputerName $PCName -Count 1 -Quiet -TimeoutSeconds 1){ #Ensure the PC is online
+if (-not(Test-Connection -ComputerName $PCName -Count 1 -Quiet)){ #Ensure the PC is online
 $PC = [pc]::new()
 $PC.PCName = $PCName ;
 $PC.Username = "Offline";
 $Ergebnis += ($PC);
-continue;
+$Exeption = $true;#This is a specal case and should not Recieve Standard Procedure
+"$PCName Offline"
+}elseif((Test-Connection -Computername $PCName -Count 1).IPV6Address -eq $null){#Catches ones with a Pingresponse but not on the Network anymore
+$PC = [pc]::new()
+$PC.PCName = $PCName ;
+$PC.Username = "Not on the Network";
+$Ergebnis += ($PC);
+$Exeption = $true;#This is a specal case and should not Recieve Standard Procedure
+"$PCName not on the Network"
 }
 
-#Catch If we cant acces Some stuff
+#Catch If we cant access Some Cim stuff
+if(-not($Exeption)){
 try{
 $null = Get-CimInstance -ClassName WMIMonitorID -ComputerName $PCName -Namespace root\wmi -ErrorAction:SilentlyContinue
-#$null = Get-CimInstance -Class Win32_USBDevice -ComputerName $PCName -ErrorAction:SilentlyContinue
 }
 Finally{
-    if($Error -ne $null){"Cim Acces Restrictions"
-    $Error.clear()}
-}
+    if($Error -ne $null){"Cim Acces Restrictions for $PCName"
+    $Error.clear()
+    $PC = [pc]::new()
+    $PC.PCName = $PCName ;
+    $PC.Username = "Cim Error";
+    $Ergebnis += ($PC);
+    $Exeption = $true;#This is a specal case and should not Recieve Standard Procedure
+    }
+}}
 
+if (-not($Exeption)){
 $PC = [pc]::new()
 $PC.PCName = $PCName ;
 $PC.Seriennummer = get-CimInstance Win32_BIOS -ComputerName $PC.PCName| Select SerialNumber |%{$_.SerialNumber}
@@ -89,89 +104,21 @@ Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |
         }} 
 
 #Adding Object to array
+"$PCName Added"
 $Ergebnis += ($PC);
 
 
-} #End of main loop
+}} #End of main loop
 
+if(-not(Test-Path -LiteralPath C:\Daten\TestOutput.csv)){
 $Ergebnis | Export-Csv -Path C:\Daten\TestOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation
-
-#Testing Stuff, dont carry to production:
-<#
-get-WmiObject Win32_BIOS | Select SerialNumber |%{$_.SerialNumber}
-get-WmiObject Win32_BIOS | Select SerialNumber |Get-ItemProperty -path "$_"
-
-$temp = "Test" , "Killer" ,177013
-ForEach($current in $temp){
-Write-Host "Temp is $current"
+}else{
+Write-Host "File already Detected,exporting additonally with Unix-seconds in Name";
+$time = (Get-Date -UFormat "%s").split(",")[0];
+$Ergebnis | Export-Csv -Path C:\Daten\"$time-"TestOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation
 }
-
-Workflow Massping{
-    ForEach -Parallel ($PCName in $PClist){ #needs aproper Import here
-        if (Test-Connection -ComputerName $PCName -Count 1 -Quiet){"$PCName is online"}else{"Offline"}"Ran $PCName"}
-} Massping
-
-Invoke-Command -ComputerName PLD104DAU094Y -{
-Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\usbccgp\Enum -name [1-9]| get-member -name "?"|%{$_.Definition}}
-
-sc \\computer_name start remoteregistry
-$test = REG QUERY \\PLD104DAU094Y\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\usbccgp\Enum;$test
-
-gwmi -Class Win32_USBDevice | select DeviceID 
-
-Get-WmiObject -Class win32_computersystem -ComputerName $PCName | select username |%{($_.username.split("\\"))[1]} 
-
-$PClist = "PLD104DAU091Y","PLD104DAU092Y","PLD104DAU093Y","PLD104DAU094Y"
-$count = 0;
-ForEach($PCName in $PClist){
-$count += 1;
-$progress = ($count/$PClist.count)
-Write-Progress -Activity "Total Progress" -Status "$progress% Complete:" -PercentComplete $progress
-$temp = $PClist.count
-Write-Host "$progress is $count by $temp "
-
-if((Get-WmiObject -ComputerName P103DIS2OG -Namespace root/CIMV2 __Namespace |Select Name |%{$_.name}) -contains "WmiMonitorID")
-
-P103DIS2OG
-
-}
-
-WmiMonitorID
-Get-WmiObject -computername P103DIS2OG -Namespace root\wmi -list |%{if($_.name -like "Wmi*"){$_}}
-Get-WmiObject -Namespace root\wmi -list |%{$_.name}|%{if($_ -like "Wmi*"){$_}}
-
-$cred = get-credential
-Get-WmiObject  -credential $cred -Class WmiMonitorID -ComputerName P103DIS2OG -Namespace root\wmi|%{$_.properties}|%{if($_.name -like "Serial*"){$_.value}}
-
-#This needs to work without list
-Get-WmiObject -Class WmiMonitorID -ComputerName P103DIS2OG -List -Namespace root\wmi|%{$_.properties}|%{if($_.name -like "Serial*"){$_}}
-
-Get-WmiObject -computername P103DIS2OG -Namespace root\wmi -list
-
-Get-DCOMSecurity -ComputerName P103DIS2OG|%{if($_.name -ne ""){$_.name}}
-
-Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{$_.DeviceID}#>
-
-#Works
-Get-CimClass -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi
-
-#Does not work
-Get-CimInstance -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi 
-Get-WmiObject -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi 
-
-$Error.clear()
-try{Get-WmiObject -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi}
-Finally{
-    if($Error -ne $null){"Error Found"}
-}
-
-$Error.clear()
-
-try{$null = Get-CimInstance -ClassName WMIMonitorID -ComputerName P103DIS2OG -Namespace root\wmi -ErrorAction:SilentlyContinue}
-Finally{
-    if($Error -ne $null){"Cim Acces Restrictions"
-    $Error.clear()}
-}
-
-$PCName = "PLD104DAU094Y"
-Test-Connection -ComputerName $PCName -Count 1 -Quiet -Delay 0
+Write-Host "Succesfull Execution";
+$sw.Stop()
+Write-Host "Time Passed:";
+$sw.Elapsed
+Read-Host -Prompt "Press Enter to exit"
