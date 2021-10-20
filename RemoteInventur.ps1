@@ -30,8 +30,6 @@ if($Singelconversion){
     $PClist = Get-Content -Path .\HardwareInventory.csv -Filter PLD*|Select |%{if(($_ -notmatch "Computer") -and ($_ -like "*,*")){($_ -split ",")[0]}}
 }
 
-[array] $PClist = $PClist | Where-Object { $_ -like "PLD104*" }
-
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $Error.clear() 
 ForEach($PCName in $PClist){
