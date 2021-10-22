@@ -5,6 +5,8 @@
 #v0.5 Fixed Exeption detection and added a system to stop Overriding of output
 #v1.0 First release.It might have bugs to fix and edge cases
 #v1.1 Added User input befor and after the Main loop
+
+
 #Start-Transcript -Path "P:\Programming\transcript.txt"
 
 class pc{#What we take from Each user
@@ -62,16 +64,19 @@ if((Read-Host "Aren you sure(this might take a while)? y/n") -eq "n"){
 Write-Host "Aborting"
 Start-Sleep -Milliseconds 1000
 exit
-}else{"Use Controll + C to abort later if need be"}}
+}else{"Use Controll + C to abort, if need be"}}
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $Error.clear() 
 ForEach($PCName in $PClist){
 $Exeption = $False;#Reset just to make sure
+
+#Progressblock
 $count += 1;
-$progress = [math]::Round(($count/$PClist.count),4)
+$progress = [math]::Round(($count/$PClist.count),4)*100
 $PClistcount = $PClist.count
 Write-Progress -Activity "Progress of Checking $PClistcount Entries" -Status "$progress% Complete:" -PercentComplete $progress 
+#End of Progressblock
 
 if (-not(Test-Connection -ComputerName $PCName -Count 1 -Quiet)){ #Ensure the PC is online
 $PC = [pc]::new()
@@ -81,27 +86,43 @@ $Ergebnis += ($PC);
 $Exeption = $true;#This is a specal case and should not Recieve Standard Procedure
 "$PCName Offline"
 }
-#Catch If we cant access Some Cim stuff
+
+#Catch Errors
 if(-not($Exeption)){
 try{
-$null =Get-CimInstance -Property SerialNumberID -ComputerName $PCName -Namespace "root/WMI" WmiMonitorID -ErrorAction:SilentlyContinue
+$Error.clear()
+$null = Get-CimInstance Win32_BIOS -ComputerName $PCName -ErrorAction:SilentlyContinue
+$null = Get-CimInstance -Class win32_computersystem -ComputerName $PCName -ErrorAction:SilentlyContinue
+$null = Get-CimInstance -Property SerialNumberID -ComputerName $PCName -Namespace "root/WMI" WmiMonitorID -ErrorAction:SilentlyContinue
 }
 Finally{
-    if($Error -ne $null){"Remote acces Restrictions for $PCName"
+if($Error -ne $null){
+    "Error Found, $PCName caused"
+    Foreach($Err in $Error){
+        $Errname =$err.exception.gettype().Name
+        if($Errorlist -notcontains $Errname){
+            $Errorlist +=$Errname;
+        }
+    }
     $Error.clear()
     $PC = [pc]::new()
     $PC.PCName = $PCName ;
-    $PC.Username = "Remote Error";
+    $PC.Username = "Error";
     $Ergebnis += ($PC);
-    $Exeption = $true;#This is a specal case and should not Recieve Standard Procedure
-    }
-}}
+    $Exeption = $true;#This means that this is a specal case and should not Recieve Standard Procedure
+    $Errorlist
+    Clear-Variable -name Errorlist
+}}}
 
 if (-not($Exeption)){
 $PC = [pc]::new()
 $PC.PCName = $PCName ;
 $PC.Seriennummer = get-CimInstance Win32_BIOS -ComputerName $PC.PCName| Select SerialNumber |%{$_.SerialNumber}
-$PC.Username = Get-CimInstance -Class win32_computersystem -ComputerName $PCName | select username |%{($_.username.split("\\"))[1]}
+$PC.Username = Get-CimInstance -Class win32_computersystem -ComputerName $PCName | select username |%{
+    if($_.username -ne $null){
+    ($_.username.split("\\"))[1]
+    }else{"Null"}
+    }
 
 #Monitor Detection:
 
@@ -128,7 +149,8 @@ Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |
         }elseif(($_.substring(8,4) -eq "1B17")){#Plusonic that is stealing the SHENZHEN e-loam VendorID
             if((($_.split("\\"))[2])[1] -ne "&"){ #See above
                 $PC.USB += "Plusonic:" + ($_ -split "\\")[2]}
-        }} 
+        }
+        } 
 
 #Adding Object to array
 "$PCName Added"
@@ -145,31 +167,33 @@ $Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding U
     if($Inputmethod -ne  "4"){
     $Outputtyp = Read-Host "File already Detected,select output method:`n(1) New File`n(2) Fill in File `n(3)Update File `n";
     }else{
-    $Outputtyp = Read-Host "File already Detected,select output method:`n(1) Seperate File`n(2) Fill in File `n(3)Update File `n";
+    $Outputtyp = Read-Host "File already Detected,select output method:`n(1) Seperate File`n(2) Update incomplete parts of the File `n`n";
     }
     Switch ($Outputtyp){
         1{$Ergebnis | Export-Csv -Path C:\Daten\"$time-"RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}
         2{#Double For loop might seem bad,but Read/write is fairly fast now (and this is the best thing i can think of)
-            $Ergebnis|Where{-not(($_.Username -eq "Offline") -or ($_.Username -eq "Cim Error"))}|Where{$old -contains $_.PCName}%{ $_.PcName}
-            $temp = $_
-                        
-            
-                            #Do stuff
-                    
+            $changes = 0
+            For($Ergebnislocation = 0;$Ergebnislocation -le ($old.count)-1;$Ergebnislocation++){
+                $Ergebnis|Where{-not(($_.Username -eq "Offline") -or ($_.Username -eq "Error"))}|%{if($old[$Ergebnislocation].PCname -eq $_.PCname){
+                    $old[$Ergebnislocation].Username = $_.Username;
+                    $old[$Ergebnislocation].Monitor1 = $_.Monitor1;
+                    $old[$Ergebnislocation].Monitor2 = $_.Monitor2;
+                    $old[$Ergebnislocation].Monitor3 = $_.Monitor3;
+                    $old[$Ergebnislocation].USB = $_.USB;
+                    $changes++
+                    #Write-Host $old[$Ergebnislocation].PCname " ($Ergebnislocation) has been updated"; # If you need to know what has been killed
+                    }}
+
             }
-        #$Old| Where {($_.Username -eq "Offline") -or ($_.Username -eq "Cim Error")}|%{#if(($Ergebnis.Pcname -contains $_)
-        #$_.PCName
-        3{"Not Implemented yet"}
+            Write-Host "$changes Entries changed"
+            $old | Export-Csv -Path C:\Daten\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}#Old now contains all of the Updates and just overrides
+          }
+          }
 
-
-
-    }
-
-$time = (Get-Date -UFormat "%s").split(",")[0];
-$Ergebnis | Export-Csv -Path C:\Daten\"$time-"TestOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation
-}
 Write-Host "Succesfull Execution";
 $sw.Stop()
 Write-Host "Time Passed:";
 Write-Host "Hours: "$sw.Elapsed.Hours "`nMinutes: "$sw.Elapsed.Minutes "`nSeconds: " $sw.Elapsed.Seconds
 Read-Host -Prompt "Press Enter to exit"
+
+#Continue working on this
