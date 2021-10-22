@@ -5,7 +5,7 @@
 #v0.5 Fixed Exeption detection and added a system to stop Overriding of output
 #v1.0 First release.It might have bugs to fix and edge cases
 #v1.1 Added User input befor and after the Main loop
-
+#v1.1 Made Updating a reality
 
 #Start-Transcript -Path "P:\Programming\transcript.txt"
 
@@ -170,7 +170,7 @@ $Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding U
     $Outputtyp = Read-Host "File already Detected,select output method:`n(1) Seperate File`n(2) Update incomplete parts of the File `n`n";
     }
     Switch ($Outputtyp){
-        1{$Ergebnis | Export-Csv -Path C:\Daten\"$time-"RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}
+        1{$Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}
         2{#Double For loop might seem bad,but Read/write is fairly fast now (and this is the best thing i can think of)
             $changes = 0
             For($Ergebnislocation = 0;$Ergebnislocation -le ($old.count)-1;$Ergebnislocation++){
@@ -186,7 +186,7 @@ $Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding U
 
             }
             Write-Host "$changes Entries changed"
-            $old | Export-Csv -Path C:\Daten\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}#Old now contains all of the Updates and just overrides
+            $old | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}#Old now contains all of the Updates and just overrides
           }
           }
 
