@@ -6,6 +6,9 @@
 #v1.0 First release.It might have bugs to fix and edge cases
 #v1.1 Added User input befor and after the Main loop
 #v1.1 Made Updating a reality
+#v1.1.2 Filepath Hotfix 
+#(Yeah, this means that every version has an added .0 at the end unless Specified)
+#v1.2 Improving Readability
 
 #Start-Transcript -Path "P:\Programming\transcript.txt"
 
@@ -20,11 +23,11 @@ class pc{#What we take from Each user
 }
 
 $Ergebnis = @();#Storing of Results until they are exported
-$count = 0; #Used for Showing Progress
+[int]$count = 0; #Used for Showing Progress
 
 Write-Host "Warning: Execution requires local admin rights on queried devices"
 
-$prep =$False
+[bool]$prep =$False
 while(-not($prep)){ #We repeat until we get an Input
 $Inputmethod = Read-Host "Select Input method:`n(1) Manual Entry`n(2) Cmac list`n(3) Selective Cmac list `n(4) Update Remoteinventory list `nSelection"
 Switch ($Inputmethod){
@@ -41,7 +44,7 @@ Switch ($Inputmethod){
         if( Test-Path HardwareInventory.csv){
             $PClist = Get-Content -Path .\HardwareInventory.csv -Filter PLD*|Select |
                 %{if(($_ -notmatch "Computer") -and ($_ -like "*,*")){($_ -split ",")[0]}}
-            $Filter = Read-Host "Enter Workstation Filter (* ist the Wildcard)"
+            $Filter = Read-Host "Enter Full Workstation Filter (* ist the Wildcard)"
             [array] $PClist = $PClist | Where-Object { $_ -like $Filter}
             Write-Host $PClist.count "Entries Selected"
             $prep = $True
@@ -55,16 +58,15 @@ Switch ($Inputmethod){
             $prep = $True
     }else{"List not found"}}
 }
-if(-not($prep)){
-    Read-Host -Prompt "Preperation incomplete.Enter to Restart"
-    cls
-}}
-if($Inputmethod -ne "1"){
-if((Read-Host "Aren you sure(this might take a while)? y/n") -eq "n"){
-Write-Host "Aborting"
-Start-Sleep -Milliseconds 1000
-exit
-}else{"Use Controll + C to abort, if need be"}}
+    if(-not($prep)){
+        Read-Host -Prompt "Preperation incomplete.Restart by Pressing Enter"
+        cls
+    }elseif(($Inputmethod -ne "1") -and (Read-Host "$($PClist.count) Entries will be Testesd `nAre you sure(this might take a while)? y/n") -eq "n"){
+        Read-Host -Prompt "Restart Selection by Pressing Enter"
+        $prep = $False;
+        cls
+    }else{"Use Controll + C to abort, if need be"}
+}
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $Error.clear() 
@@ -74,8 +76,7 @@ $Exeption = $False;#Reset just to make sure
 #Progressblock
 $count += 1;
 $progress = [math]::Round(($count/$PClist.count),4)*100
-$PClistcount = $PClist.count
-Write-Progress -Activity "Progress of Checking $PClistcount Entries" -Status "$progress% Complete:" -PercentComplete $progress 
+Write-Progress -Activity "Progress of Checking $($PClist.count) Entries" -Status "$progress% Complete:" -PercentComplete $progress 
 #End of Progressblock
 
 if (-not(Test-Connection -ComputerName $PCName -Count 1 -Quiet)){ #Ensure the PC is online
@@ -120,16 +121,15 @@ $PC.PCName = $PCName ;
 $PC.Seriennummer = get-CimInstance Win32_BIOS -ComputerName $PC.PCName| Select SerialNumber |%{$_.SerialNumber}
 $PC.Username = Get-CimInstance -Class win32_computersystem -ComputerName $PCName | select username |%{
     if($_.username -ne $null){
-    ($_.username.split("\\"))[1]
+        ($_.username.split("\\"))[1]
     }else{"Null"}
     }
 
 #Monitor Detection:
 
-$Monitorsarray = Get-CimInstance -Property SerialNumberID -ComputerName $PC.PCName -Namespace "root/WMI" WmiMonitorID |Select-Object  SerialNumberID | %{[char[]]($_.SerialNumberID)};
+$Monitorsarray = Get-CimInstance -Property SerialNumberID -ComputerName $PC.PCName -Namespace "root/WMI" WmiMonitorID |%{[char[]]($_.SerialNumberID)};
 
 if([int]$Monitorsarray[1] -ne 0){#Removes internal and Empty Serials
-
 $Monitorsarray[0..15]| Foreach-Object{ $PC.Monitor1 += $_;}}
 
 if([int]$Monitorsarray[17] -ne 0){#Removes internal and Empty Serials
@@ -140,9 +140,10 @@ $Monitorsarray[32..47]| Foreach-Object{ $PC.Monitor3 += $_;}}
 
 
 #USB Detection
-Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |%{$_.DeviceID}|%{
+Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice |%{$_.DeviceID}|%{
         if(($_.substring(8,4) -eq "03F0") -and ($_.substring(17,4) -ne "2B4A") -and ($_.substring(17,4) -ne "154A")){#HP but not the Keyboard or Mouse
-        $PC.USB += "HP:" + ($_ -split "\\")[2]
+            if((($_.split("\\"))[2])[1] -ne "&"){
+                $PC.USB += "HP:" + ($_ -split "\\")[2]}
         }elseif(($_.substring(8,4) -eq "046D") -and ($_.substring(17,4) -ne "C31C")){#Logitec but not the Standard Keyboard
             if((($_.split("\\"))[2])[1] -ne "&"){ #If the Second Character after In the Value is "&" the SN is not usefull
                 $PC.USB += "Logitec:" + ($_ -split "\\")[2]}
@@ -150,7 +151,7 @@ Get-CimInstance -ComputerName $PCName -Class Win32_USBDevice | select DeviceID |
             if((($_.split("\\"))[2])[1] -ne "&"){ #See above
                 $PC.USB += "Plusonic:" + ($_ -split "\\")[2]}
         }
-        } 
+       } 
 
 #Adding Object to array
 "$PCName Added"
@@ -164,22 +165,19 @@ if(-not(Test-Path -LiteralPath .\RemoteinventoryOutput.csv)){
 Write-Host "Currently no File detcted in Parent folder , Creating new File Here"
 $Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation
 }else{
+    Write-Host "File already Detected,select output method:"
     if($Inputmethod -ne  "4"){
-    $Outputtyp = Read-Host "File already Detected,select output method:`n(1) New File`n(2) Fill in File `n(3)Update File `n";
+    $Outputtype = Read-Host "(1) New File`n(2) Fill in File `n";
     }else{
-    $Outputtyp = Read-Host "File already Detected,select output method:`n(1) Seperate File`n(2) Update incomplete parts of the File `n`n";
+    $Outputtype = Read-Host "(1) Seperate File`n(2) Update incomplete parts of the File `n";
     }
-    Switch ($Outputtyp){
+    Switch ($Outputtype){
         1{$Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}
         2{#Double For loop might seem bad,but Read/write is fairly fast now (and this is the best thing i can think of)
             $changes = 0
             For($Ergebnislocation = 0;$Ergebnislocation -le ($old.count)-1;$Ergebnislocation++){
-                $Ergebnis|Where{-not(($_.Username -eq "Offline") -or ($_.Username -eq "Error"))}|%{if($old[$Ergebnislocation].PCname -eq $_.PCname){
-                    $old[$Ergebnislocation].Username = $_.Username;
-                    $old[$Ergebnislocation].Monitor1 = $_.Monitor1;
-                    $old[$Ergebnislocation].Monitor2 = $_.Monitor2;
-                    $old[$Ergebnislocation].Monitor3 = $_.Monitor3;
-                    $old[$Ergebnislocation].USB = $_.USB;
+                $Ergebnis|Where{-not(($_.Username -eq "Offline") -or ($_.Username -like "*Error*"))}|%{if($old[$Ergebnislocation].PCname -eq $_.PCname){
+                    $old[$Ergebnislocation] = $_;
                     $changes++
                     #Write-Host $old[$Ergebnislocation].PCname " ($Ergebnislocation) has been updated"; # If you need to know what has been killed
                     }}
@@ -193,7 +191,11 @@ $Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding U
 Write-Host "Succesfull Execution";
 $sw.Stop()
 Write-Host "Time Passed:";
-Write-Host "Hours: "$sw.Elapsed.Hours "`nMinutes: "$sw.Elapsed.Minutes "`nSeconds: " $sw.Elapsed.Seconds
+if ($sw.Elapsed.Hours -ne 0){
+    Write-Host "Hours: "$sw.Elapsed.Hours
+} 
+Write-Host "Minutes:" $sw.Elapsed.Minutes 
+Write-Host "Seconds: " $sw.Elapsed.Seconds
 Read-Host -Prompt "Press Enter to exit"
 
 #Continue working on this
