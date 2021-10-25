@@ -71,6 +71,30 @@ Switch ($Inputmethod){
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $Error.clear() 
+
+<#WIP: Ping is in its own Block to be faster
+Start-Job -ScriptBlock {Test-Connection -ComputerName "PLD104DAU094Y" -Count 1 -Quiet} -Name "PLD104DAU094Y"
+
+function Give-MassPing{
+  param(
+        [Parameter(Mandatory=$true)]$Inputarray
+    )
+    class PcPing{#What we take from Each user
+        [String]$PCName
+        [bool]$Ping
+    }
+    $Output = @()
+    $Inputarray |%{
+        $Ping = [PcPing]::new()
+        $Ping.PCName = $_
+        $Ping.Ping = Start-Job  -ScriptBlock {Test-Connection -ComputerName $_ -Count 1 -Quiet}
+        $output += $Ping
+    }
+    Write-Host "Returning $($Outpput.count)"
+    $Output
+
+}#>
+
 ForEach($PCName in $PClist){
 $Exeption = $False;#Reset just to make sure
 
@@ -172,12 +196,13 @@ $Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding U
     }else{
     $Outputtype = Read-Host "(1) Seperate File`n(2) Update incomplete parts of the File `n";
     }
+    "Writing,don't Panic"
     Switch ($Outputtype){
         1{$Ergebnis | Export-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8 -NoTypeInformation}
         2{#Double For loop might seem bad,but Read/write is fairly fast now (and this is the best thing i can think of)
             $changes = 0
             For($Ergebnislocation = 0;$Ergebnislocation -le ($old.count)-1;$Ergebnislocation++){
-                $Ergebnis|Where{-not(($_.Username -eq "Offline") -or ($_.Username -like "*Error*"))}|%{if($old[$Ergebnislocation].PCname -eq $_.PCname){
+                $Ergebnis|Where{-not(($_.Username -eq "Offline") -or ($_.Username -like "*Error*") -or ($_.Username -like "Null"))}|%{if($old[$Ergebnislocation].PCname -eq $_.PCname){
                     $old[$Ergebnislocation] = $_;
                     $changes++
                     #Write-Host $old[$Ergebnislocation].PCname " ($Ergebnislocation) has been updated"; # If you need to know what has been killed
