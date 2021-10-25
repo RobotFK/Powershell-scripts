@@ -9,6 +9,7 @@
 #v1.1.2 Filepath Hotfix 
 #(Yeah, this means that every version has an added .0 at the end unless Specified)
 #v1.2 Improving Readability
+#v1.3 Bugfixes in Monitorreadout,Filereadout and Test-Connection handeling
 
 #Start-Transcript -Path "P:\Programming\transcript.txt"
 
@@ -53,7 +54,7 @@ Switch ($Inputmethod){
         if( Test-Path RemoteinventoryOutput.csv){
         	$Old = Import-Csv -Path .\RemoteinventoryOutput.csv -UseCulture -Encoding UTF8
             $PClist = $null #Just to be sure
-            $PClist += $Old| Where {($_.Username -eq "Offline") -or ($_.Username -eq "Cim Error")}|%{$_.PCName}
+            $PClist += $Old| Where {($_.Username -eq "Offline") -or ($_.Username -like "*Error*")}|%{$_.PCName}
             Write-Host $PClist.Count "Entries Selected"
             $prep = $True
     }else{"List not found"}}
@@ -129,13 +130,13 @@ $PC.Username = Get-CimInstance -Class win32_computersystem -ComputerName $PCName
 
 $Monitorsarray = Get-CimInstance -Property SerialNumberID -ComputerName $PC.PCName -Namespace "root/WMI" WmiMonitorID |%{[char[]]($_.SerialNumberID)};
 
-if([int]$Monitorsarray[1] -ne 0){#Removes internal and Empty Serials
+if([int]$Monitorsarray[1] -ne [char]0){#Removes internal and Empty Serials
 $Monitorsarray[0..15]| Foreach-Object{ $PC.Monitor1 += $_;}}
 
-if([int]$Monitorsarray[17] -ne 0){#Removes internal and Empty Serials
+if([int]$Monitorsarray[17] -ne [char]0){#Removes internal and Empty Serials
 $Monitorsarray[16..31]| Foreach-Object{ $PC.Monitor2 += $_;}}
 
-if([int]$Monitorsarray[33] -ne 0){#Removes internal and Empty Serials
+if([int]$Monitorsarray[33] -ne [char]0){#Removes internal and Empty Serials
 $Monitorsarray[32..47]| Foreach-Object{ $PC.Monitor3 += $_;}}
 
 
