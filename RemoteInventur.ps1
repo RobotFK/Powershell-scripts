@@ -1,4 +1,5 @@
-﻿#By Fabian Keusen under  GPL-3.0 License 
+﻿###Changelog########################################################################################
+#By Fabian Keusen under  GPL-3.0 License 
 #V0.2 Added more Stuff, mostly Framwork
 #V0.3 Replaced Registry readout with wmi options
 #V0.4 Replaced all Wmi with Cmi, added a system to detect cmi internal errors
@@ -10,9 +11,35 @@
 #(Yeah, this means that every version has an added .0 at the end unless Specified)
 #v1.2 Improving Readability
 #v1.3 Bugfixes in Monitorreadout,Filereadout and Test-Connection handeling
+#v1.4 Removing WIP Mass-ping, added Userguide
+####################################################################################################
 
 #Start-Transcript -Path "P:\Programming\transcript.txt"
 
+###User-Guide#######################################################################################
+#
+#Preparation:
+#Place this Script in a Folder
+#-This is a Requirement
+#
+#Place a File with a list of Computernames in the same Folder
+#-This is optional,but make life much easier
+#-The File needs to be called HardwareInventory.csv
+#-Lines with Computer in them are Ignored
+#-Valid lines in the File are either Only the Computername or the Computername being the First entry and seperated form the rest of the File by a comma
+#
+#Place a File of a Pervious RemoteInvetur (RemoteinventoryOutput.csv) in the same Folder
+#-This is optional,but allows updating this list, saving Time and Comuting/Networkpower 
+#
+#Input method Explainations
+#Manual Entry: (1)
+#Runs the Script for only a single Computer
+#Cmac list: (2)
+#Imports a list from a File and Runs through every entry
+#Selective Cmac list:(3)
+#Imports a list from a File and Runs through entry,filtering by a afterwards entered Filter
+#Update Remoteinventory list: (4)
+#Imports a list from a File and Runs through entry,filtering by a afterwards entered Filter
 class pc{#What we take from Each user
         [String]$Seriennummer
         [String]$PCName
@@ -71,29 +98,6 @@ Switch ($Inputmethod){
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $Error.clear() 
-
-<#WIP: Ping is in its own Block to be faster
-Start-Job -ScriptBlock {Test-Connection -ComputerName "PLD104DAU094Y" -Count 1 -Quiet} -Name "PLD104DAU094Y"
-
-function Give-MassPing{
-  param(
-        [Parameter(Mandatory=$true)]$Inputarray
-    )
-    class PcPing{#What we take from Each user
-        [String]$PCName
-        [bool]$Ping
-    }
-    $Output = @()
-    $Inputarray |%{
-        $Ping = [PcPing]::new()
-        $Ping.PCName = $_
-        $Ping.Ping = Start-Job  -ScriptBlock {Test-Connection -ComputerName $_ -Count 1 -Quiet}
-        $output += $Ping
-    }
-    Write-Host "Returning $($Outpput.count)"
-    $Output
-
-}#>
 
 ForEach($PCName in $PClist){
 $Exeption = $False;#Reset just to make sure
