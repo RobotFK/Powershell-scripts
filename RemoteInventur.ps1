@@ -37,9 +37,18 @@
 #Cmac list: (2)
 #Imports a list from a File and Runs through every entry
 #Selective Cmac list:(3)
-#Imports a list from a File and Runs through entry,filtering by a afterwards entered Filter
+#Imports a list from a File and Runs through entries,filtering by a afterwards entered Filter
 #Update Remoteinventory list: (4)
-#Imports a list from a File and Runs through entry,filtering by a afterwards entered Filter
+#Imports a list from a File and Runs through entries marked with error or offline
+#
+#During the Main Process progress will be displayed
+#
+#Output method Explainations
+#New File:(1)
+#Takes the Gathered information into a New file,overriding if a File already exist in the folder
+#Fill in File: (2)
+#Replaces all Entries that were marked with error or offline and that have new information.New entries or differing information on valid entries are discarded
+
 class pc{#What we take from Each user
         [String]$Seriennummer
         [String]$PCName
